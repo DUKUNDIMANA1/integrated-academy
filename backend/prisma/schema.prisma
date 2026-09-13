@@ -1,0 +1,1739 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── IDENTITY ────────────────────────────────────────────────────────────────
+
+model User {
+  id                String         @id @default(uuid())
+  email             String         @unique
+  phone             String?        @unique
+  firstName         String
+  lastName          String
+  passwordHash      String
+  role              Role           @default(STUDENT)
+  avatarUrl         String?
+  isActive          Boolean        @default(true)
+  isEmailVerified   Boolean        @default(false)
+  emailVerifyToken  String?
+  resetToken        String?
+  resetTokenExpiry  DateTime?
+  mfaEnabled        Boolean        @default(false)
+  lastLogin         DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  student               Student?
+  employee              Employee?
+  sessions              Session[]
+  auditLogs             AuditLog[]
+  sentNotifications     Notification[] @relation("SentBy")
+  receivedNotifications Notification[] @relation("ReceivedBy")
+}
+
+enum Role {
+  SUPER_ADMIN
+  GENERAL_MANAGER
+  ACADEMY_MANAGER
+  ELEARNING_MANAGER
+  FINANCE_OFFICER
+  INSTRUCTOR
+  CONSULTANT
+  STUDENT
+  CLIENT_ROLE
+  HR_OFFICER
+  SALES_ADMISSIONS
+  SUPPORT_OFFICER
+  AUDITOR
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token      String   @unique
+  ipAddress  String?
+  userAgent  String?
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+}
+
+// ─── STUDENTS ────────────────────────────────────────────────────────────────
+
+model Student {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  studentCode      String   @unique
+  dateOfBirth      DateTime?
+  gender           String?
+  nationality      String?
+  address          String?
+  emergencyContact String?
+  educationLevel   String?
+  occupation       String?
+  profilePhoto     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  applications   StudentApplication[]
+  enrollments    Enrollment[]
+  invoices       Invoice[]
+  payments       Payment[]
+  certificates   Certificate[]
+  attendances    Attendance[]
+  supportTickets SupportTicket[]
+  documents      Document[]
+}
+
+model StudentApplication {
+  id               String            @id @default(uuid())
+  studentId        String
+  student          Student           @relation(fields: [studentId], references: [id])
+  courseId         String
+  course           Course            @relation(fields: [courseId], references: [id])
+  cohortId         String?
+  cohort           Cohort?           @relation(fields: [cohortId], references: [id])
+  status           ApplicationStatus @default(PENDING)
+  educationBackground String?
+  workExperience   String?
+  motivation       String?
+  documents        Json?
+  rejectionReason  String?
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  submittedAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  invoice    Invoice?
+  enrollment Enrollment?
+}
+
+enum ApplicationStatus {
+  DRAFT
+  PENDING
+  CONFIRMED
+  REJECTED
+  PAYMENT_PENDING
+  PARTIALLY_PAID
+  FULLY_PAID
+  ENROLLED
+  ACTIVE
+  COMPLETED
+}
+
+// ─── COURSES & ACADEMY ───────────────────────────────────────────────────────
+
+model Course {
+  id                      String       @id @default(uuid())
+  code                    String       @unique
+  title                   String
+  description             String?
+  category                String?
+  type                    CourseType   @default(CLASSROOM)
+  durationDays            Int          @default(30)
+  partialPaymentLockDays  Int          @default(15)
+  fee                     Decimal      @db.Decimal(15, 2)
+  currency                String       @default("RWF")
+  capacity                Int?
+  prerequisites           String?
+  startDate               DateTime?
+  endDate                 DateTime?
+  status                  CourseStatus @default(DRAFT)
+  thumbnail               String?
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  modules      CourseModule[]
+  cohorts      Cohort[]
+  applications StudentApplication[]
+  enrollments  Enrollment[]
+  invoices     Invoice[]
+}
+
+enum CourseType {
+  CLASSROOM
+  ONLINE
+  HYBRID
+}
+
+enum CourseStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model CourseModule {
+  id          String   @id @default(uuid())
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  order       Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  lessons     Lesson[]
+  assessments Assessment[]
+}
+
+model Lesson {
+  id          String     @id @default(uuid())
+  moduleId    String
+  module      CourseModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title       String
+  content     String?
+  type        LessonType @default(TEXT)
+  fileUrl     String?
+  videoUrl    String?
+  duration    Int?
+  order       Int
+  isProtected Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  progress LessonProgress[]
+}
+
+enum LessonType {
+  TEXT
+  VIDEO
+  PDF
+  AUDIO
+  SCORM
+}
+
+model LessonProgress {
+  id           String     @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lessonId     String
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  isCompleted  Boolean    @default(false)
+  completedAt  DateTime?
+  timeSpent    Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([enrollmentId, lessonId])
+}
+
+model Cohort {
+  id           String       @id @default(uuid())
+  courseId     String
+  course       Course       @relation(fields: [courseId], references: [id])
+  name         String
+  startDate    DateTime
+  endDate      DateTime
+  capacity     Int?
+  instructorId String?
+  status       CohortStatus @default(UPCOMING)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  applications StudentApplication[]
+  enrollments  Enrollment[]
+  schedules    ClassSchedule[]
+  attendances  Attendance[]
+}
+
+enum CohortStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model ClassSchedule {
+  id         String   @id @default(uuid())
+  cohortId   String
+  cohort     Cohort   @relation(fields: [cohortId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  startTime  String
+  endTime    String
+  classroom  String?
+  createdAt  DateTime @default(now())
+}
+
+model Enrollment {
+  id              String       @id @default(uuid())
+  studentId       String
+  student         Student      @relation(fields: [studentId], references: [id])
+  courseId        String
+  course          Course       @relation(fields: [courseId], references: [id])
+  cohortId        String?
+  cohort          Cohort?      @relation(fields: [cohortId], references: [id])
+  applicationId   String?      @unique
+  application     StudentApplication? @relation(fields: [applicationId], references: [id])
+  accessStatus    AccessStatus @default(ACTIVE)
+  enrolledAt      DateTime     @default(now())
+  completedAt     DateTime?
+  accessLockedAt  DateTime?
+  accessUnlockedAt DateTime?
+  lockReason      String?
+  progressPercent Decimal      @default(0) @db.Decimal(5, 2)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  lessonProgress LessonProgress[]
+  attendances    Attendance[]
+}
+
+enum AccessStatus {
+  ACTIVE
+  LOCKED
+  COMPLETED
+  CANCELLED
+}
+
+// ─── FINANCE ─────────────────────────────────────────────────────────────────
+
+model Account {
+  id             String      @id @default(uuid())
+  name           String
+  type           AccountType
+  currency       String      @default("RWF")
+  openingBalance Decimal     @default(0) @db.Decimal(15, 2)
+  currentBalance Decimal     @default(0) @db.Decimal(15, 2)
+  accountNumber  String?
+  bankName       String?
+  isActive       Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  incomeTransactions Income[]
+  expenseTransactions Expense[]
+  debitTransfers     Transfer[]          @relation("FromAccount")
+  creditTransfers    Transfer[]          @relation("ToAccount")
+  transactions       AccountTransaction[]
+}
+
+enum AccountType {
+  CASH
+  BANK
+  MOBILE_MONEY
+  OTHER
+}
+
+model AccountTransaction {
+  id            String          @id @default(uuid())
+  accountId     String
+  account       Account         @relation(fields: [accountId], references: [id])
+  type          TransactionType
+  amount        Decimal         @db.Decimal(15, 2)
+  balanceBefore Decimal         @db.Decimal(15, 2)
+  balanceAfter  Decimal         @db.Decimal(15, 2)
+  reference     String?
+  description   String?
+  relatedId     String?
+  relatedType   String?
+  createdAt     DateTime        @default(now())
+  createdBy     String?
+}
+
+enum TransactionType {
+  CREDIT
+  DEBIT
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+model Invoice {
+  id                   String        @id @default(uuid())
+  invoiceNumber        String        @unique
+  studentId            String?
+  student              Student?      @relation(fields: [studentId], references: [id])
+  courseId             String?
+  course               Course?       @relation(fields: [courseId], references: [id])
+  applicationId        String?       @unique
+  application          StudentApplication? @relation(fields: [applicationId], references: [id])
+  clientId             String?
+  client               Client?       @relation(fields: [clientId], references: [id])
+  consultancyProjectId String?
+  consultancyProject   ConsultancyProject? @relation(fields: [consultancyProjectId], references: [id])
+  subtotal             Decimal       @db.Decimal(15, 2)
+  discount             Decimal       @default(0) @db.Decimal(15, 2)
+  tax                  Decimal       @default(0) @db.Decimal(15, 2)
+  totalAmount          Decimal       @db.Decimal(15, 2)
+  paidAmount           Decimal       @default(0) @db.Decimal(15, 2)
+  outstandingBalance   Decimal       @db.Decimal(15, 2)
+  currency             String        @default("RWF")
+  issueDate            DateTime      @default(now())
+  dueDate              DateTime?
+  status               InvoiceStatus @default(UNPAID)
+  notes                String?
+  createdBy            String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  payments     Payment[]
+  installments PaymentInstallment[]
+  income       Income[]
+}
+
+enum InvoiceStatus {
+  DRAFT
+  UNPAID
+  PARTIALLY_PAID
+  FULLY_PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+model Payment {
+  id               String        @id @default(uuid())
+  paymentNumber    String        @unique
+  studentId        String?
+  student          Student?      @relation(fields: [studentId], references: [id])
+  invoiceId        String
+  invoice          Invoice       @relation(fields: [invoiceId], references: [id])
+  amount           Decimal       @db.Decimal(15, 2)
+  currency         String        @default("RWF")
+  method           PaymentMethod
+  status           PaymentStatus @default(PENDING)
+  reference        String?       @unique
+  gatewayReference String?
+  accountId        String?
+  notes            String?
+  processedBy      String?
+  processedAt      DateTime?
+  receiptUrl       String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  income      Income?
+  installment PaymentInstallment?
+  receipt     Receipt?
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  MOBILE_MONEY
+  CARD
+  ONLINE
+}
+
+enum PaymentStatus {
+  PENDING
+  CONFIRMED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+model PaymentInstallment {
+  id                 String            @id @default(uuid())
+  invoiceId          String
+  invoice            Invoice           @relation(fields: [invoiceId], references: [id])
+  paymentId          String?           @unique
+  payment            Payment?          @relation(fields: [paymentId], references: [id])
+  installmentNumber  Int
+  amountDue          Decimal           @db.Decimal(15, 2)
+  amountPaid         Decimal           @default(0) @db.Decimal(15, 2)
+  remainingBalance   Decimal           @db.Decimal(15, 2)
+  dueDate            DateTime
+  checkpointDate     DateTime?
+  status             InstallmentStatus @default(PENDING)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+model Income {
+  id          String         @id @default(uuid())
+  date        DateTime       @default(now())
+  category    IncomeCategory
+  source      String?
+  description String?
+  amount      Decimal        @db.Decimal(15, 2)
+  currency    String         @default("RWF")
+  method      PaymentMethod
+  accountId   String
+  account     Account        @relation(fields: [accountId], references: [id])
+  reference   String?
+  studentId   String?
+  invoiceId   String?
+  invoice     Invoice?       @relation(fields: [invoiceId], references: [id])
+  paymentId   String?        @unique
+  payment     Payment?       @relation(fields: [paymentId], references: [id])
+  receivedBy  String?
+  attachment  String?
+  status      IncomeStatus   @default(CONFIRMED)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+enum IncomeCategory {
+  COURSE_FEE
+  REGISTRATION_FEE
+  EXAM_FEE
+  CERTIFICATION_FEE
+  ELEARNING_FEE
+  SUBSCRIPTION_FEE
+  CONSULTANCY_PAYMENT
+  PROJECT_PAYMENT
+  BANK_DEPOSIT
+  MOBILE_MONEY_IN
+  OTHER
+}
+
+enum IncomeStatus {
+  PENDING
+  CONFIRMED
+}
+
+model Expense {
+  id          String          @id @default(uuid())
+  date        DateTime        @default(now())
+  category    ExpenseCategory
+  description String?
+  amount      Decimal         @db.Decimal(15, 2)
+  currency    String          @default("RWF")
+  paidTo      String?
+  method      PaymentMethod
+  accountId   String
+  account     Account         @relation(fields: [accountId], references: [id])
+  approvedBy  String?
+  receipt     String?
+  status      ExpenseStatus   @default(PENDING)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+enum ExpenseCategory {
+  SALARY
+  RENT
+  ELECTRICITY
+  WATER
+  INTERNET
+  TRANSPORT
+  OFFICE_SUPPLIES
+  EQUIPMENT
+  SOFTWARE
+  MARKETING
+  MAINTENANCE
+  TRAINING
+  CONSULTANCY_EXP
+  TAXES
+  BANK_CHARGES
+  OTHER
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  PAID
+  REJECTED
+}
+
+model Transfer {
+  id            String   @id @default(uuid())
+  fromAccountId String
+  fromAccount   Account  @relation("FromAccount", fields: [fromAccountId], references: [id])
+  toAccountId   String
+  toAccount     Account  @relation("ToAccount", fields: [toAccountId], references: [id])
+  amount        Decimal  @db.Decimal(15, 2)
+  currency      String   @default("RWF")
+  reference     String?
+  description   String?
+  transferDate  DateTime @default(now())
+  processedBy   String?
+  createdAt     DateTime @default(now())
+}
+
+model Budget {
+  id          String       @id @default(uuid())
+  name        String
+  period      BudgetPeriod
+  startDate   DateTime
+  endDate     DateTime
+  category    String?
+  department  String?
+  totalAmount Decimal      @db.Decimal(15, 2)
+  currency    String       @default("RWF")
+  approvedBy  String?
+  status      BudgetStatus @default(DRAFT)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  items BudgetItem[]
+}
+
+enum BudgetPeriod {
+  MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum BudgetStatus {
+  DRAFT
+  APPROVED
+  ACTIVE
+  CLOSED
+}
+
+model BudgetItem {
+  id              String  @id @default(uuid())
+  budgetId        String
+  budget          Budget  @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  category        String
+  description     String?
+  allocatedAmount Decimal @db.Decimal(15, 2)
+  actualAmount    Decimal @default(0) @db.Decimal(15, 2)
+  variance        Decimal @default(0) @db.Decimal(15, 2)
+  createdAt       DateTime @default(now())
+}
+
+model Reconciliation {
+  id              String                @id @default(uuid())
+  accountId       String
+  period          String
+  systemBalance   Decimal               @db.Decimal(15, 2)
+  externalBalance Decimal               @db.Decimal(15, 2)
+  difference      Decimal               @db.Decimal(15, 2)
+  status          ReconciliationStatus  @default(PENDING)
+  notes           String?
+  reconciledBy    String?
+  reconciledAt    DateTime?
+  createdAt       DateTime              @default(now())
+}
+
+enum ReconciliationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FLAGGED
+}
+
+model Receipt {
+  id            String   @id @default(uuid())
+  receiptNumber String   @unique
+  paymentId     String   @unique
+  payment       Payment  @relation(fields: [paymentId], references: [id])
+  studentId     String?
+  amount        Decimal  @db.Decimal(15, 2)
+  currency      String   @default("RWF")
+  issuedAt      DateTime @default(now())
+  issuedBy      String?
+  fileUrl       String?
+  createdAt     DateTime @default(now())
+}
+
+model Refund {
+  id          String       @id @default(uuid())
+  paymentId   String
+  invoiceId   String
+  amount      Decimal      @db.Decimal(15, 2)
+  reason      String
+  status      RefundStatus @default(PENDING)
+  approvedBy  String?
+  processedAt DateTime?
+  createdAt   DateTime     @default(now())
+}
+
+enum RefundStatus {
+  PENDING
+  APPROVED
+  PROCESSED
+  REJECTED
+}
+
+model FinancialPeriod {
+  id        String       @id @default(uuid())
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  status    PeriodStatus @default(OPEN)
+  closedBy  String?
+  closedAt  DateTime?
+  createdAt DateTime     @default(now())
+}
+
+enum PeriodStatus {
+  OPEN
+  CLOSED
+}
+
+// ─── ASSESSMENT ───────────────────────────────────────────────────────────────
+
+model Assessment {
+  id            String         @id @default(uuid())
+  moduleId      String
+  module        CourseModule   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title         String
+  type          AssessmentType
+  description   String?
+  totalMarks    Int            @default(100)
+  passMark      Int            @default(50)
+  duration      Int?
+  attempts      Int            @default(1)
+  dueDate       DateTime?
+  isPublished   Boolean        @default(false)
+  attachmentUrl String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  questions   Question[]
+  submissions AssessmentSubmission[]
+}
+
+enum AssessmentType {
+  QUIZ
+  ASSIGNMENT
+  EXAM
+  PROJECT
+}
+
+model Question {
+  id            String       @id @default(uuid())
+  assessmentId  String
+  assessment    Assessment   @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  text          String
+  type          QuestionType
+  options       Json?
+  correctAnswer String?
+  marks         Int          @default(1)
+  order         Int
+  createdAt     DateTime     @default(now())
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  ESSAY
+  FILE_UPLOAD
+}
+
+model AssessmentSubmission {
+  id            String           @id @default(uuid())
+  assessmentId  String
+  assessment    Assessment       @relation(fields: [assessmentId], references: [id])
+  studentId     String
+  answers       Json?
+  fileUrl       String?
+  score         Decimal?         @db.Decimal(5, 2)
+  feedback      String?
+  status        SubmissionStatus @default(SUBMITTED)
+  attemptNumber Int              @default(1)
+  submittedAt   DateTime         @default(now())
+  gradedBy      String?
+  gradedAt      DateTime?
+}
+
+enum SubmissionStatus {
+  DRAFT
+  SUBMITTED
+  GRADED
+  RETURNED
+}
+
+model Attendance {
+  id           String           @id @default(uuid())
+  enrollmentId String
+  enrollment   Enrollment       @relation(fields: [enrollmentId], references: [id])
+  studentId    String
+  student      Student          @relation(fields: [studentId], references: [id])
+  cohortId     String?
+  cohort       Cohort?          @relation(fields: [cohortId], references: [id])
+  date         DateTime
+  status       AttendanceStatus @default(PRESENT)
+  notes        String?
+  recordedBy   String?
+  createdAt    DateTime         @default(now())
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+// ─── CERTIFICATES ─────────────────────────────────────────────────────────────
+
+model Certificate {
+  id                String            @id @default(uuid())
+  certificateNumber String            @unique
+  studentId         String
+  student           Student           @relation(fields: [studentId], references: [id])
+  courseId          String
+  enrollmentId      String
+  issuedAt          DateTime          @default(now())
+  expiresAt         DateTime?
+  verificationCode  String            @unique
+  verificationUrl   String?
+  fileUrl           String?
+  status            CertificateStatus @default(ACTIVE)
+  issuedBy          String?
+  revokedAt         DateTime?
+  revokeReason      String?
+  createdAt         DateTime          @default(now())
+}
+
+enum CertificateStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+// ─── CONSULTANCY ──────────────────────────────────────────────────────────────
+
+model Lead {
+  id         String      @id @default(uuid())
+  name       String
+  email      String?
+  phone      String?
+  company    String?
+  source     LeadSource?
+  status     LeadStatus  @default(NEW)
+  notes      String?
+  assignedTo String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  client Client?
+}
+
+enum LeadSource {
+  WEBSITE
+  REFERRAL
+  SOCIAL_MEDIA
+  EMAIL
+  PHONE
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  PROPOSAL_SENT
+  NEGOTIATING
+  WON
+  LOST
+}
+
+model Client {
+  id            String   @id @default(uuid())
+  leadId        String?  @unique
+  lead          Lead?    @relation(fields: [leadId], references: [id])
+  name          String
+  email         String
+  phone         String?
+  company       String?
+  address       String?
+  contactPerson String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  proposals Proposal[]
+  contracts Contract[]
+  projects  ConsultancyProject[]
+  invoices  Invoice[]
+}
+
+model Proposal {
+  id          String         @id @default(uuid())
+  clientId    String
+  client      Client         @relation(fields: [clientId], references: [id])
+  title       String
+  description String?
+  amount      Decimal        @db.Decimal(15, 2)
+  currency    String         @default("RWF")
+  validUntil  DateTime?
+  status      ProposalStatus @default(DRAFT)
+  fileUrl     String?
+  sentAt      DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+enum ProposalStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model Contract {
+  id          String         @id @default(uuid())
+  clientId    String
+  client      Client         @relation(fields: [clientId], references: [id])
+  title       String
+  description String?
+  value       Decimal        @db.Decimal(15, 2)
+  currency    String         @default("RWF")
+  startDate   DateTime
+  endDate     DateTime?
+  status      ContractStatus @default(DRAFT)
+  fileUrl     String?
+  signedAt    DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  projects ConsultancyProject[]
+}
+
+enum ContractStatus {
+  DRAFT
+  SENT
+  SIGNED
+  ACTIVE
+  COMPLETED
+  TERMINATED
+}
+
+model ConsultancyProject {
+  id          String        @id @default(uuid())
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id])
+  contractId  String?
+  contract    Contract?     @relation(fields: [contractId], references: [id])
+  title       String
+  description String?
+  budget      Decimal?      @db.Decimal(15, 2)
+  currency    String        @default("RWF")
+  startDate   DateTime
+  endDate     DateTime?
+  status      ProjectStatus @default(PLANNING)
+  managerId   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  milestones Milestone[]
+  tasks      ProjectTask[]
+  timesheets Timesheet[]
+  invoices   Invoice[]
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+model Milestone {
+  id          String          @id @default(uuid())
+  projectId   String
+  project     ConsultancyProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  status      MilestoneStatus @default(PENDING)
+  createdAt   DateTime        @default(now())
+}
+
+enum MilestoneStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  MISSED
+}
+
+model ProjectTask {
+  id          String       @id @default(uuid())
+  projectId   String
+  project     ConsultancyProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId String?
+  title       String
+  description String?
+  assignedTo  String?
+  dueDate     DateTime?
+  completedAt DateTime?
+  status      TaskStatus   @default(TODO)
+  priority    TaskPriority @default(MEDIUM)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  REVIEW
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Timesheet {
+  id           String             @id @default(uuid())
+  projectId    String
+  project      ConsultancyProject @relation(fields: [projectId], references: [id])
+  consultantId String
+  date         DateTime
+  hoursWorked  Decimal            @db.Decimal(5, 2)
+  description  String?
+  billable     Boolean            @default(true)
+  approvedBy   String?
+  createdAt    DateTime           @default(now())
+}
+
+// ─── HR ───────────────────────────────────────────────────────────────────────
+
+model Employee {
+  id             String         @id @default(uuid())
+  userId         String         @unique
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employeeCode   String         @unique
+  departmentId   String?
+  department     Department?    @relation(fields: [departmentId], references: [id])
+  position       String?
+  employmentType EmploymentType @default(FULL_TIME)
+  salary         Decimal?       @db.Decimal(15, 2)
+  currency       String         @default("RWF")
+  hireDate       DateTime
+  endDate        DateTime?
+  status         EmployeeStatus @default(ACTIVE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  leaveRequests LeaveRequest[]
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  TERMINATED
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  managerId   String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employees Employee[]
+}
+
+model LeaveRequest {
+  id          String      @id @default(uuid())
+  employeeId  String
+  employee    Employee    @relation(fields: [employeeId], references: [id])
+  type        LeaveType
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+  status      LeaveStatus @default(PENDING)
+  approvedBy  String?
+  approvedAt  DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+enum LeaveType {
+  ANNUAL
+  SICK
+  MATERNITY
+  PATERNITY
+  UNPAID
+  OTHER
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+// ─── SHARED SERVICES ──────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  user      User             @relation("ReceivedBy", fields: [userId], references: [id], onDelete: Cascade)
+  senderId  String?
+  sender    User?            @relation("SentBy", fields: [senderId], references: [id])
+  type      NotificationType
+  title     String
+  message   String
+  data      Json?
+  isRead    Boolean          @default(false)
+  readAt    DateTime?
+  channels  String[]         @default(["IN_APP"])
+  createdAt DateTime         @default(now())
+}
+
+enum NotificationType {
+  APPLICATION_SUBMITTED
+  APPLICATION_CONFIRMED
+  APPLICATION_REJECTED
+  PAYMENT_SUCCESS
+  PAYMENT_FAILED
+  PAYMENT_REMINDER
+  INVOICE_CREATED
+  BALANCE_REMINDER
+  COURSE_ACCESS_LOCKED
+  COURSE_ACCESS_UNLOCKED
+  CLASS_REMINDER
+  ASSESSMENT_DUE
+  GRADE_RELEASED
+  CERTIFICATE_ISSUED
+  TICKET_UPDATE
+  SYSTEM_ANNOUNCEMENT
+}
+
+model Document {
+  id          String       @id @default(uuid())
+  name        String
+  type        DocumentType
+  fileUrl     String
+  fileSize    Int?
+  mimeType    String?
+  studentId   String?
+  student     Student?     @relation(fields: [studentId], references: [id])
+  relatedId   String?
+  relatedType String?
+  uploadedBy  String
+  isPublic    Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+}
+
+enum DocumentType {
+  STUDENT_ID
+  CERTIFICATE
+  INVOICE
+  RECEIPT
+  CONTRACT
+  PROPOSAL
+  ASSIGNMENT
+  COURSE_MATERIAL
+  OTHER
+}
+
+model SupportTicket {
+  id           String          @id @default(uuid())
+  ticketNumber String          @unique
+  studentId    String?
+  student      Student?        @relation(fields: [studentId], references: [id])
+  submittedBy  String
+  category     TicketCategory
+  priority     TicketPriority  @default(MEDIUM)
+  subject      String
+  description  String
+  status       TicketStatus    @default(OPEN)
+  assignedTo   String?
+  resolvedAt   DateTime?
+  closedAt     DateTime?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  responses   TicketResponse[]
+  attachments String[]
+}
+
+enum TicketCategory {
+  TECHNICAL
+  PAYMENT
+  COURSE
+  ADMISSION
+  CERTIFICATE
+  OTHER
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_RESPONSE
+  RESOLVED
+  CLOSED
+}
+
+model TicketResponse {
+  id          String        @id @default(uuid())
+  ticketId    String
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  responderId String
+  message     String
+  isInternal  Boolean       @default(false)
+  attachments String[]
+  createdAt   DateTime      @default(now())
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  entity     String
+  entityId   String?
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  userAgent  String?
+  reference  String?
+  createdAt  DateTime @default(now())
+}
+
+model PaymentAccessEvent {
+  id               String                 @id @default(uuid())
+  enrollmentId     String
+  studentId        String
+  courseId         String
+  eventType        PaymentAccessEventType
+  previousStatus   AccessStatus
+  newStatus        AccessStatus
+  paymentReference String?
+  amount           Decimal?               @db.Decimal(15, 2)
+  notes            String?
+  createdAt        DateTime               @default(now())
+}
+
+enum PaymentAccessEventType {
+  ENROLLED
+  LOCKED
+  UNLOCK_INITIATED
+  UNLOCKED
+  REMINDER_SENT
+}
+
+// ─── SUPPLIER MANAGEMENT ──────────────────────────────────────────────────────
+
+model Supplier {
+  id                  String         @id @default(uuid())
+  supplierCode        String         @unique
+  name                String
+  companyName         String?
+  type                SupplierType   @default(GENERAL)
+  category            String?
+  registrationNumber  String?
+  taxId               String?
+  country             String?        @default("Rwanda")
+  province            String?
+  district            String?
+  address             String?
+  contactPerson       String?
+  phone               String?
+  email               String?
+  website             String?
+  bankName            String?
+  bankAccount         String?
+  accountName         String?
+  paymentMethod       String?        @default("BANK_TRANSFER")
+  paymentTerms        Int?           @default(30)
+  creditLimit         Decimal?       @db.Decimal(15, 2)
+  currency            String         @default("RWF")
+  status              SupplierStatus @default(PENDING_APPROVAL)
+  notes               String?
+  approvedBy          String?
+  approvedAt          DateTime?
+  createdBy           String?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  invoices        SupplierInvoice[]
+  payments        SupplierPayment[]
+  purchaseOrders  PurchaseOrder[]
+  contracts       SupplierContract[]
+  documents       SupplierDocument[]
+  evaluations     SupplierEvaluation[]
+}
+
+enum SupplierType {
+  TECHNOLOGY
+  OFFICE_SUPPLIES
+  INTERNET
+  SOFTWARE
+  EQUIPMENT
+  TRAINING
+  FURNITURE
+  MAINTENANCE
+  TRANSPORT
+  CLEANING
+  SECURITY
+  CONSULTANCY
+  GENERAL
+  OTHER
+}
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+  PENDING_APPROVAL
+  SUSPENDED
+  BLACKLISTED
+  EXPIRED
+}
+
+model SupplierInvoice {
+  id             String                @id @default(uuid())
+  invoiceNumber  String                @unique
+  supplierId     String
+  supplier       Supplier              @relation(fields: [supplierId], references: [id])
+  purchaseOrderId String?
+  purchaseOrder  PurchaseOrder?        @relation(fields: [purchaseOrderId], references: [id])
+  description    String?
+  subtotal       Decimal               @db.Decimal(15, 2)
+  tax            Decimal               @default(0) @db.Decimal(15, 2)
+  discount       Decimal               @default(0) @db.Decimal(15, 2)
+  totalAmount    Decimal               @db.Decimal(15, 2)
+  paidAmount     Decimal               @default(0) @db.Decimal(15, 2)
+  outstandingBalance Decimal           @db.Decimal(15, 2)
+  currency       String                @default("RWF")
+  issueDate      DateTime              @default(now())
+  dueDate        DateTime?
+  status         SupplierInvoiceStatus @default(SUBMITTED)
+  fileUrl        String?
+  notes          String?
+  reviewedBy     String?
+  approvedBy     String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+
+  payments SupplierPayment[]
+}
+
+enum SupplierInvoiceStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  REJECTED
+  CANCELLED
+}
+
+model SupplierPayment {
+  id               String         @id @default(uuid())
+  paymentNumber    String         @unique
+  supplierId       String
+  supplier         Supplier       @relation(fields: [supplierId], references: [id])
+  invoiceId        String?
+  invoice          SupplierInvoice? @relation(fields: [invoiceId], references: [id])
+  amount           Decimal        @db.Decimal(15, 2)
+  currency         String         @default("RWF")
+  method           PaymentMethod
+  reference        String?
+  accountId        String?
+  status           PaymentStatus  @default(PENDING)
+  approvedBy       String?
+  processedBy      String?
+  processedAt      DateTime?
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model PurchaseOrder {
+  id              String          @id @default(uuid())
+  poNumber        String          @unique
+  supplierId      String
+  supplier        Supplier        @relation(fields: [supplierId], references: [id])
+  description     String?
+  expectedDate    DateTime?
+  status          POStatus        @default(DRAFT)
+  subtotal        Decimal         @db.Decimal(15, 2)
+  tax             Decimal         @default(0) @db.Decimal(15, 2)
+  discount        Decimal         @default(0) @db.Decimal(15, 2)
+  totalAmount     Decimal         @db.Decimal(15, 2)
+  currency        String          @default("RWF")
+  approvedBy      String?
+  approvedAt      DateTime?
+  sentAt          DateTime?
+  receivedAt      DateTime?
+  createdBy       String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  items    PurchaseOrderItem[]
+  invoices SupplierInvoice[]
+}
+
+enum POStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  SENT
+  PARTIALLY_RECEIVED
+  RECEIVED
+  COMPLETED
+  CANCELLED
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  description     String
+  quantity        Decimal       @db.Decimal(10, 2)
+  unitPrice       Decimal       @db.Decimal(15, 2)
+  tax             Decimal       @default(0) @db.Decimal(15, 2)
+  discount        Decimal       @default(0) @db.Decimal(15, 2)
+  totalPrice      Decimal       @db.Decimal(15, 2)
+  receivedQty     Decimal       @default(0) @db.Decimal(10, 2)
+  createdAt       DateTime      @default(now())
+}
+
+model SupplierContract {
+  id          String               @id @default(uuid())
+  supplierId  String
+  supplier    Supplier             @relation(fields: [supplierId], references: [id])
+  title       String
+  description String?
+  value       Decimal?             @db.Decimal(15, 2)
+  currency    String               @default("RWF")
+  startDate   DateTime
+  endDate     DateTime?
+  renewalDate DateTime?
+  status      SupplierContractStatus @default(ACTIVE)
+  paymentTerms String?
+  fileUrl     String?
+  signedAt    DateTime?
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+}
+
+enum SupplierContractStatus {
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+  TERMINATED
+  SUSPENDED
+}
+
+model SupplierDocument {
+  id          String   @id @default(uuid())
+  supplierId  String
+  supplier    Supplier @relation(fields: [supplierId], references: [id])
+  name        String
+  type        String
+  fileUrl     String
+  fileSize    Int?
+  uploadedBy  String?
+  createdAt   DateTime @default(now())
+}
+
+model SupplierEvaluation {
+  id             String   @id @default(uuid())
+  supplierId     String
+  supplier       Supplier @relation(fields: [supplierId], references: [id])
+  qualityScore   Int?
+  priceScore     Int?
+  deliveryScore  Int?
+  reliabilityScore Int?
+  serviceScore   Int?
+  overallScore   Decimal? @db.Decimal(4, 2)
+  comments       String?
+  evaluatedBy    String?
+  evaluatedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+}
+
+// ─── PAYROLL ─────────────────────────────────────────────────────────────────
+
+model PayrollPeriod {
+  id          String        @id @default(uuid())
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  payDate     DateTime?
+  status      PayrollStatus @default(DRAFT)
+  approvedBy  String?
+  approvedAt  DateTime?
+  processedBy String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  payslips Payslip[]
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSING
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+model Payslip {
+  id              String        @id @default(uuid())
+  payrollPeriodId String
+  payrollPeriod   PayrollPeriod @relation(fields: [payrollPeriodId], references: [id])
+  employeeId      String
+  basicSalary     Decimal       @db.Decimal(15, 2)
+  allowances      Decimal       @default(0) @db.Decimal(15, 2)
+  bonuses         Decimal       @default(0) @db.Decimal(15, 2)
+  overtime        Decimal       @default(0) @db.Decimal(15, 2)
+  grossSalary     Decimal       @db.Decimal(15, 2)
+  taxDeduction    Decimal       @default(0) @db.Decimal(15, 2)
+  pensionDeduction Decimal      @default(0) @db.Decimal(15, 2)
+  otherDeductions Decimal       @default(0) @db.Decimal(15, 2)
+  netSalary       Decimal       @db.Decimal(15, 2)
+  currency        String        @default("RWF")
+  status          PayslipStatus @default(DRAFT)
+  paidAt          DateTime?
+  fileUrl         String?
+  notes           String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+enum PayslipStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+// ─── TAX MANAGEMENT ──────────────────────────────────────────────────────────
+
+model TaxRecord {
+  id          String    @id @default(uuid())
+  name        String
+  type        TaxType
+  rate        Decimal   @db.Decimal(6, 4)
+  amount      Decimal?  @db.Decimal(15, 2)
+  period      String
+  startDate   DateTime
+  endDate     DateTime
+  dueDate     DateTime?
+  status      TaxStatus @default(PENDING)
+  paidAt      DateTime?
+  paidAmount  Decimal?  @db.Decimal(15, 2)
+  reference   String?
+  notes       String?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+enum TaxType {
+  VAT
+  INCOME_TAX
+  WITHHOLDING_TAX
+  PAYE
+  OTHER
+}
+
+enum TaxStatus {
+  PENDING
+  FILED
+  PAID
+  OVERDUE
+  EXEMPT
+}
+
+// ─── GENERAL LEDGER / CHART OF ACCOUNTS ──────────────────────────────────────
+
+model ChartOfAccount {
+  id          String      @id @default(uuid())
+  code        String      @unique
+  name        String
+  type        AccountCOAType
+  category    String?
+  description String?
+  parentId    String?
+  parent      ChartOfAccount?  @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children    ChartOfAccount[] @relation("AccountHierarchy")
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  journalEntries JournalEntryLine[]
+}
+
+enum AccountCOAType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+model JournalEntry {
+  id          String    @id @default(uuid())
+  reference   String    @unique
+  description String?
+  date        DateTime  @default(now())
+  status      JournalStatus @default(POSTED)
+  createdBy   String?
+  approvedBy  String?
+  createdAt   DateTime  @default(now())
+
+  lines JournalEntryLine[]
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+model JournalEntryLine {
+  id           String         @id @default(uuid())
+  journalId    String
+  journal      JournalEntry   @relation(fields: [journalId], references: [id], onDelete: Cascade)
+  accountId    String
+  account      ChartOfAccount @relation(fields: [accountId], references: [id])
+  description  String?
+  debit        Decimal        @default(0) @db.Decimal(15, 2)
+  credit       Decimal        @default(0) @db.Decimal(15, 2)
+  createdAt    DateTime       @default(now())
+}
+
+// ─── ANNOUNCEMENTS & MESSAGING ────────────────────────────────────────────────
+
+model Announcement {
+  id          String             @id @default(uuid())
+  title       String
+  content     String
+  type        AnnouncementType   @default(GENERAL)
+  targetRole  String?
+  targetCourseId String?
+  authorId    String
+  isPinned    Boolean            @default(false)
+  isPublished Boolean            @default(true)
+  publishedAt DateTime           @default(now())
+  expiresAt   DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+}
+
+enum AnnouncementType {
+  GENERAL
+  COURSE
+  FINANCE
+  ACADEMIC
+  URGENT
+}
+
+model Message {
+  id          String        @id @default(uuid())
+  senderId    String
+  recipientId String
+  subject     String?
+  body        String
+  isRead      Boolean       @default(false)
+  readAt      DateTime?
+  parentId    String?
+  parent      Message?      @relation("MessageThread", fields: [parentId], references: [id])
+  replies     Message[]     @relation("MessageThread")
+  createdAt   DateTime      @default(now())
+}
+
+// ─── DISCUSSION FORUM ─────────────────────────────────────────────────────────
+
+model DiscussionThread {
+  id        String    @id @default(uuid())
+  courseId  String?
+  moduleId  String?
+  title     String
+  content   String
+  authorId  String
+  isPinned  Boolean   @default(false)
+  isResolved Boolean  @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  replies DiscussionReply[]
+}
+
+model DiscussionReply {
+  id        String           @id @default(uuid())
+  threadId  String
+  thread    DiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorId  String
+  content   String
+  isAnswer  Boolean          @default(false)
+  createdAt DateTime         @default(now())
+}
+
+// ─── STUDENT FEEDBACK ─────────────────────────────────────────────────────────
+
+model CourseFeedback {
+  id              String   @id @default(uuid())
+  studentId       String
+  courseId        String
+  trainerId       String?
+  trainerRating   Int?
+  courseRating    Int?
+  materialsRating Int?
+  platformRating  Int?
+  comments        String?
+  createdAt       DateTime @default(now())
+
+  @@unique([studentId, courseId])
+}
+
+// ─── ONLINE SESSIONS ──────────────────────────────────────────────────────────
+
+model OnlineSession {
+  id           String    @id @default(uuid())
+  cohortId     String?
+  courseId     String?
+  title        String
+  description  String?
+  meetingLink  String?
+  startTime    DateTime
+  endTime      DateTime?
+  recordingUrl String?
+  hostId       String
+  status       SessionStatus @default(SCHEDULED)
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+enum SessionStatus {
+  SCHEDULED
+  LIVE
+  COMPLETED
+  CANCELLED
+}
+
+// ─── ORGANIZATION SETTINGS ────────────────────────────────────────────────────
+
+model OrganizationSettings {
+  id           String   @id @default(uuid())
+  key          String   @unique
+  value        String
+  category     String   @default("general")
+  description  String?
+  updatedBy    String?
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+}

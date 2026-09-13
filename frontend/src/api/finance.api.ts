@@ -1,0 +1,32 @@
+import api from './axios';
+
+export const financeApi = {
+  getDashboard: () => api.get('/finance/dashboard'),
+  getAccounts: () => api.get('/finance/accounts'),
+  createAccount: (data: object) => api.post('/finance/accounts', data),
+  getCashbook: (accountId: string, params?: object) =>
+    api.get(`/finance/accounts/${accountId}/cashbook`, { params }),
+  getIncome: (params?: object) => api.get('/finance/income', { params }),
+  createIncome: (data: object) => api.post('/finance/income', data),
+  getExpenses: (params?: object) => api.get('/finance/expenses', { params }),
+  createExpense: (data: object) => api.post('/finance/expenses', data),
+  approveExpense: (id: string) => api.post(`/finance/expenses/${id}/approve`),
+  payExpense: (id: string) => api.post(`/finance/expenses/${id}/pay`),
+  getInvoices: (params?: object) => api.get('/finance/invoices', { params }),
+  getInvoice: (id: string) => api.get(`/finance/invoices/${id}`),
+  createInvoice: (data: object) => api.post('/finance/invoices', data),
+  getOutstandingInvoices: () => api.get('/finance/invoices/outstanding'),
+  getPayments: (params?: object) => api.get('/finance/payments', { params }),
+  createPayment: (data: object) => api.post('/finance/payments', data),
+  confirmPayment: (id: string) => api.post(`/finance/payments/${id}/confirm`),
+  getTransfers: (params?: object) => api.get('/finance/transfers', { params }),
+  createTransfer: (data: object) => api.post('/finance/transfers', data),
+  getBudgets: () => api.get('/finance/budgets'),
+  createBudget: (data: object) => api.post('/finance/budgets', data),
+  getReconciliations: () => api.get('/finance/reconciliations'),
+  createReconciliation: (data: object) => api.post('/finance/reconciliations', data),
+  getRefunds: (params?: object) => api.get('/finance/refunds', { params }),
+  getIncomeReport: (params?: object) => api.get('/finance/reports/income', { params }),
+  getExpenseReport: (params?: object) => api.get('/finance/reports/expenses', { params }),
+  getFinancialSummary: (params?: object) => api.get('/finance/reports/summary', { params }),
+};

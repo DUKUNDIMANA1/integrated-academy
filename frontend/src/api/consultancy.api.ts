@@ -1,0 +1,27 @@
+import api from './axios';
+
+export const consultancyApi = {
+  getLeads: (params?: object) => api.get('/consultancy/leads', { params }),
+  createLead: (data: object) => api.post('/consultancy/leads', data),
+  updateLead: (id: string, data: object) => api.put(`/consultancy/leads/${id}`, data),
+  convertLead: (id: string, data: object) => api.post(`/consultancy/leads/${id}/convert`, data),
+  getClients: (params?: object) => api.get('/consultancy/clients', { params }),
+  getClient: (id: string) => api.get(`/consultancy/clients/${id}`),
+  createClient: (data: object) => api.post('/consultancy/clients', data),
+  getProposals: (params?: object) => api.get('/consultancy/proposals', { params }),
+  createProposal: (data: object) => api.post('/consultancy/proposals', data),
+  updateProposal: (id: string, data: object) => api.put(`/consultancy/proposals/${id}`, data),
+  getContracts: (params?: object) => api.get('/consultancy/contracts', { params }),
+  createContract: (data: object) => api.post('/consultancy/contracts', data),
+  updateContract: (id: string, data: object) => api.put(`/consultancy/contracts/${id}`, data),
+  getProjects: (params?: object) => api.get('/consultancy/projects', { params }),
+  getProject: (id: string) => api.get(`/consultancy/projects/${id}`),
+  createProject: (data: object) => api.post('/consultancy/projects', data),
+  updateProject: (id: string, data: object) => api.put(`/consultancy/projects/${id}`, data),
+  createMilestone: (projectId: string, data: object) => api.post(`/consultancy/projects/${projectId}/milestones`, data),
+  updateMilestone: (id: string, data: object) => api.put(`/consultancy/milestones/${id}`, data),
+  createTask: (projectId: string, data: object) => api.post(`/consultancy/projects/${projectId}/tasks`, data),
+  updateTask: (id: string, data: object) => api.put(`/consultancy/tasks/${id}`, data),
+  getTimesheets: (params?: object) => api.get('/consultancy/timesheets', { params }),
+  createTimesheet: (data: object) => api.post('/consultancy/timesheets', data),
+};
