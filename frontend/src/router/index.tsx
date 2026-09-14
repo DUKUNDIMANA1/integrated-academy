@@ -81,7 +81,11 @@ import { AnnouncementsPage } from '../pages/communication/AnnouncementsPage';
 // ── Settings ──────────────────────────────────────────────────────────────────
 import { ProfileSettings } from '../pages/settings/ProfileSettings';
 
-// ── Placeholder for pages not yet built ──────────────────────────────────────
+// Wrapper that forces remount when navigating to the same route
+const Remount: React.FC<{ children: React.ReactElement }> = ({ children }) => {
+  const location = useLocation();
+  return React.cloneElement(children, { key: location.pathname });
+};
 const Placeholder = ({ title }: { title: string }) => (
   <div className="card text-center py-20">
     <h2 className="text-gray-400 text-xl">{title}</h2>

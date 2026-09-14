@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, ClipboardList, FileQuestion, Layers, Search } from 'lucide-react';
+import { BookOpen, ClipboardList, FileQuestion, Layers, RefreshCw, Search } from 'lucide-react';
 import { academyApi } from '../../api/academy.api';
 import { Button } from '../../components/ui/Button';
 import { PageSpinner } from '../../components/ui/Spinner';
@@ -12,13 +12,26 @@ export const ELearningContentPage: React.FC = () => {
   const [courses, setCourses] = useState<any[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    academyApi.getCourses({ limit: 100 })
-      .then(response => setCourses(response.data.data || []))
-      .catch(() => toast.error('Failed to load e-learning courses'))
-      .finally(() => setLoading(false));
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    else setRefreshing(true);
+    try {
+      const response = await academyApi.getCourses({ limit: 100 });
+      // backend returns { data: [...courses], meta: {...} }
+      const list = response.data?.data ?? response.data ?? [];
+      setCourses(Array.isArray(list) ? list : []);
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || 'Failed to load e-learning courses');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }, []);
+
+  // Load on mount
+  useEffect(() => { load(); }, [load]);
 
   const filteredCourses = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -37,9 +50,19 @@ export const ELearningContentPage: React.FC = () => {
           <h1>E-Learning Content</h1>
           <p className="text-sm text-gray-500">Build lessons, quizzes, exams, assignments, and projects for each course.</p>
         </div>
-        <Button icon={<BookOpen className="w-4 h-4" />} onClick={() => navigate('/academy/courses')}>
-          Manage Courses
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            icon={<RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />}
+            onClick={() => load(true)}
+            loading={refreshing}
+          >
+            Reload
+          </Button>
+          <Button icon={<BookOpen className="w-4 h-4" />} onClick={() => navigate('/academy/courses')}>
+            Manage Courses
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
