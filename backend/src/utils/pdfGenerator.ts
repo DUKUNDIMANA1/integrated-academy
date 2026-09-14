@@ -15,15 +15,20 @@ export const generateReceiptPDF = async (paymentData: {
 };
 
 /**
- * Generates a certificate PDF that matches the TrusterLabs design:
- *  - White landscape background with a soft light-gray gradient feel
- *  - Dark navy filled shape in the top-right corner
- *  - Gold/yellow decorative wave in the bottom-right corner
- *  - Logo (or org name text) in the top-left
- *  - Bold "CERTIFICATE" heading, italic "OF COMPLETION" subtitle
- *  - Student name large, centered, with a horizontal rule beneath
- *  - Description paragraph in italic
- *  - QR code centered at the bottom with two side signatories
+ * Pixel-accurate recreation of the TrusterLabs certificate design:
+ *
+ * Layout (A4 Landscape 841.89 × 595.28 pt):
+ *   • Light blue-gray gradient background (#e8eaf2 → #f5f6fb)
+ *   • Dark navy organic blob — top-right corner
+ *   • Gold organic wave — bottom-right corner (two-layer)
+ *   • Logo top-left (image if available, else text badge)
+ *   • "CERTIFICATE"  — large bold centered ~y 110
+ *   • "OF COMPLETION" — italic centered ~y 165
+ *   • Student name   — very large bold centered ~y 240
+ *   • Horizontal rule full-width below name
+ *   • Two italic description lines ~y 310
+ *   • Bottom section at ~y 450:
+ *       [sig line + Supervisor]  [QR code]  [sig line + Manager]
  */
 export const generateCertificatePDF = async (certData: {
   certificateNumber: string;
@@ -34,24 +39,24 @@ export const generateCertificatePDF = async (certData: {
   verificationUrl?: string;
   logoPath?: string;
   providerName?: string;
-  programName?: string;
   supervisorName?: string;
   supervisorTitle?: string;
   managerName?: string;
   managerTitle?: string;
 }): Promise<Buffer> => {
-  // ── QR code ──────────────────────────────────────────────────────────────
+  /* ── QR code ── */
   const verifyUrl =
     certData.verificationUrl ||
     `https://trusterlabsacademy.com/verify/${certData.verificationCode}`;
+
   const qrBuffer = await QRCode.toBuffer(verifyUrl, {
     type: 'png',
-    width: 130,
+    width: 200,
     margin: 1,
-    color: { dark: '#1a1a2e', light: '#ffffff' },
+    color: { dark: '#0d1b4b', light: '#ffffff' },
   });
 
-  // ── Document setup ────────────────────────────────────────────────────────
+  /* ── Document ── */
   const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0 });
   const chunks: Buffer[] = [];
   doc.on('data', (c: Buffer) => chunks.push(c));
@@ -60,241 +65,229 @@ export const generateCertificatePDF = async (certData: {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    const W = 841.89; // A4 landscape width  (pts)
-    const H = 595.28; // A4 landscape height (pts)
+    const W = 841.89;
+    const H = 595.28;
 
-    // ── 1. White background ──────────────────────────────────────────────────
-    doc.rect(0, 0, W, H).fill('#f5f6fb');
+    /* ── 1. Background — light blue-gray ── */
+    // Simulate the soft radial gradient with a plain fill + a lighter center highlight
+    doc.rect(0, 0, W, H).fill('#e9ecf5');
 
-    // ── 2. Very subtle inner white panel ────────────────────────────────────
-    doc.roundedRect(22, 22, W - 44, H - 44, 8).fill('#ffffff');
+    // Lighter central area to mimic the gradient glow
+    const cx = W * 0.42;
+    const cy = H * 0.44;
+    const steps = 18;
+    for (let i = steps; i >= 0; i--) {
+      const ratio = i / steps;
+      const r = 340 * (1 - ratio * 0.5);
+      // interpolate from #e9ecf5 (outer) to #f4f5fb (inner)
+      const lum = Math.round(233 + (244 - 233) * (1 - ratio));
+      const lumHex = lum.toString(16).padStart(2, '0');
+      const color = `#${lumHex}${lumHex}fb`.replace('fbfbfb', 'f4f5fb');
+      doc.circle(cx, cy, r).fill(color);
+    }
 
-    // ── 3. Navy corner shape — top-right ────────────────────────────────────
-    // Roughly matches the dark navy blob in the reference image
+    /* ── 2. Navy organic blob — top-right ── */
+    // Traced from the reference: starts at top-right corner, sweeps left/down
+    // then curves back up and closes at top-right.
     doc
       .save()
-      .moveTo(W - 22, 22)           // top-right of inner panel
-      .lineTo(W - 22, 22 + 180)     // down the right edge
-      .bezierCurveTo(
-        W - 22, 22 + 230,
-        W - 130, 22 + 180,
-        W - 180, 22 + 100
-      )
-      .bezierCurveTo(
-        W - 240, 22 + 30,
-        W - 200, 22,
-        W - 22, 22
-      )
+      .moveTo(W, 0)                            // top-right corner
+      .lineTo(W, 0)
+      .bezierCurveTo(W, 0, W - 5, 0, W - 60, 0)      // top edge going left
+      .bezierCurveTo(W - 160, 0, W - 220, 30, W - 200, 100)  // dip into page
+      .bezierCurveTo(W - 185, 155, W - 130, 195, W - 60, 200) // curve down
+      .bezierCurveTo(W - 10, 203, W, 185, W, 160)    // curve back to right edge
+      .lineTo(W, 0)                            // close back to top-right
       .fill('#0d1b4b')
       .restore();
 
-    // ── 4. Gold / yellow decorative wave — bottom-right ─────────────────────
+    /* ── 3. Gold wave — bottom-right ── */
+    // Outer (darker gold)
     doc
       .save()
-      .moveTo(W - 22, H - 22)       // bottom-right corner
-      .lineTo(W - 22, H - 140)
-      .bezierCurveTo(
-        W - 22, H - 180,
-        W - 100, H - 160,
-        W - 160, H - 110
-      )
-      .bezierCurveTo(
-        W - 240, H - 55,
-        W - 200, H - 22,
-        W - 22, H - 22
-      )
-      .fill('#e8b84b')
+      .moveTo(W, H)                            // bottom-right
+      .lineTo(W, H - 165)
+      .bezierCurveTo(W, H - 200, W - 40, H - 195, W - 80, H - 165)
+      .bezierCurveTo(W - 140, H - 125, W - 185, H - 70, W - 220, H - 40)
+      .bezierCurveTo(W - 250, H - 15, W - 230, H, W - 180, H)
+      .lineTo(W, H)
+      .fill('#d4a843')
       .restore();
 
-    // Thin gold accent line (secondary highlight strip inside bottom-right)
+    // Inner (lighter gold / cream highlight)
     doc
       .save()
-      .moveTo(W - 22, H - 22)
-      .lineTo(W - 22, H - 90)
-      .bezierCurveTo(
-        W - 22, H - 120,
-        W - 60, H - 110,
-        W - 100, H - 80
-      )
-      .bezierCurveTo(
-        W - 150, H - 40,
-        W - 110, H - 22,
-        W - 22, H - 22
-      )
-      .fill('#f5c842')
+      .moveTo(W, H)
+      .lineTo(W, H - 100)
+      .bezierCurveTo(W - 5, H - 130, W - 35, H - 125, W - 65, H - 100)
+      .bezierCurveTo(W - 110, H - 65, W - 145, H - 30, W - 170, H - 10)
+      .bezierCurveTo(W - 185, H - 2, W - 175, H, W - 140, H)
+      .lineTo(W, H)
+      .fill('#f0c84a')
       .restore();
 
-    // ── 5. Logo or org name — top-left ───────────────────────────────────────
-    const logoX = 52;
-    const logoY = 40;
+    /* ── 4. Logo — top-left ── */
     if (certData.logoPath && fs.existsSync(certData.logoPath)) {
-      doc.image(certData.logoPath, logoX, logoY, { fit: [120, 60], valign: 'center' });
+      doc.image(certData.logoPath, 38, 28, { fit: [130, 58] });
     } else {
-      // Fallback text badge that mimics the "TRUSTER LABS" lock-icon style
-      doc
-        .roundedRect(logoX, logoY, 130, 52, 4)
-        .fill('#ffffff')
-        .stroke('#e2e8f0');
+      // White badge with "TRUSTER LABS" text to match the reference
+      doc.roundedRect(32, 24, 148, 60, 5).fill('#ffffff');
+      // Lock icon placeholder (circle)
+      doc.circle(58, 54, 14).fill('#f5c518');
+      doc.circle(58, 54, 9).fill('#1a3a8a');
+      // Text
       doc
         .font('Helvetica-Bold')
-        .fontSize(13)
+        .fontSize(14)
         .fillColor('#0d1b4b')
-        .text('TRUSTER LABS', logoX + 8, logoY + 10, { width: 114 });
+        .text('TRUSTER LABS', 78, 38);
       doc
         .font('Helvetica')
         .fontSize(7)
-        .fillColor('#5a7ab5')
-        .text('FORTIFY · EMPOWER · DEFEND', logoX + 8, logoY + 30, { width: 114 });
+        .fillColor('#6b7ba8')
+        .text('FORTIFY · EMPOWER · DEFEND', 78, 57);
     }
 
-    // ── 6. "CERTIFICATE" heading ─────────────────────────────────────────────
+    /* ── 5. "CERTIFICATE" ── */
     doc
       .font('Helvetica-Bold')
-      .fontSize(44)
+      .fontSize(52)
       .fillColor('#0d1b4b')
-      .text('CERTIFICATE', 0, 88, { align: 'center', width: W });
+      .text('CERTIFICATE', 0, 100, { align: 'center', width: W, characterSpacing: 2 });
 
-    // ── 7. "OF COMPLETION" subtitle ──────────────────────────────────────────
+    /* ── 6. "OF COMPLETION" ── */
     doc
       .font('Helvetica-Oblique')
-      .fontSize(18)
-      .fillColor('#444c6e')
-      .text('OF COMPLETION', 0, 142, { align: 'center', width: W });
+      .fontSize(20)
+      .fillColor('#2a3560')
+      .text('OF COMPLETION', 0, 165, { align: 'center', width: W, characterSpacing: 3 });
 
-    // ── 8. Student name — large, centered ────────────────────────────────────
-    const nameY = 205;
+    /* ── 7. Student name ── */
+    const nameY = 248;
     doc
       .font('Helvetica-Bold')
-      .fontSize(36)
+      .fontSize(40)
       .fillColor('#0d1b4b')
-      .text(certData.studentName, 80, nameY, { align: 'center', width: W - 160 });
+      .text(certData.studentName, 60, nameY, { align: 'center', width: W - 120 });
 
-    // Underline beneath the name
-    const nameTextWidth = Math.min(certData.studentName.length * 18, W - 200);
-    const underlineX = (W - nameTextWidth) / 2;
-    const underlineY = nameY + 46;
+    /* ── 8. Underline beneath name ── */
+    // Full-width rule matching the reference (runs almost full width)
+    const ruleY = nameY + 50;
     doc
-      .moveTo(underlineX, underlineY)
-      .lineTo(underlineX + nameTextWidth, underlineY)
-      .lineWidth(1.2)
-      .stroke('#0d1b4b');
+      .moveTo(55, ruleY)
+      .lineTo(W - 55, ruleY)
+      .lineWidth(1.0)
+      .strokeColor('#0d1b4b')
+      .stroke();
 
-    // ── 9. Description paragraph ──────────────────────────────────────────────
+    /* ── 9. Description lines ── */
     const dateStr = certData.issuedAt.toLocaleDateString('en-US', {
-      year: 'numeric',
       month: 'long',
       day: 'numeric',
+      year: 'numeric',
     });
-    const org = certData.providerName || 'TrusterLabs Academy';
-    const course = certData.courseName;
 
+    // Line 1
     doc
       .font('Helvetica-Oblique')
-      .fontSize(12)
-      .fillColor('#333333')
+      .fontSize(13)
+      .fillColor('#2a2a2a')
       .text(
-        `has successfully completed the "${course}" professional training program`,
+        `has successfully completed a professional training program conducted on ${dateStr}.`,
         80,
-        underlineY + 16,
-        { align: 'center', width: W - 160 }
-      );
-    doc
-      .font('Helvetica-Oblique')
-      .fontSize(12)
-      .fillColor('#333333')
-      .text(
-        `conducted by ${org} on ${dateStr}.`,
-        80,
-        underlineY + 34,
-        { align: 'center', width: W - 160 }
-      );
-    doc
-      .font('Helvetica-Oblique')
-      .fontSize(11.5)
-      .fillColor('#555555')
-      .text(
-        'Their dedication and commitment to the learning process are truly commendable.',
-        80,
-        underlineY + 54,
+        ruleY + 14,
         { align: 'center', width: W - 160 }
       );
 
-    // ── 10. Horizontal divider ────────────────────────────────────────────────
-    const divY = underlineY + 82;
+    // Line 2
     doc
-      .moveTo(52, divY)
-      .lineTo(W - 52, divY)
-      .lineWidth(0.6)
-      .stroke('#c8cfe0');
+      .font('Helvetica-Oblique')
+      .fontSize(13)
+      .fillColor('#2a2a2a')
+      .text(
+        `${_pronoun(certData.studentName)} dedication and commitment to the learning process are truly commendable.`,
+        80,
+        ruleY + 38,
+        { align: 'center', width: W - 160 }
+      );
 
-    // ── 11. Bottom section: left signatory | QR code | right signatory ───────
-    const bottomY = divY + 18;
-    const sigLineLen = 130;
+    /* ── 10. Bottom section ── */
+    const botY = 458;          // vertical start of the signatory section
+    const sigW = 150;          // width of each sig block
+    const leftSigX = 72;       // left sig block left edge
+    const rightSigX = W - 72 - sigW; // right sig block left edge
+    const qrSize = 90;
+    const qrX = (W - qrSize) / 2;
+    const qrY = botY - 8;
 
-    // Left signatory
-    const leftX = 70;
-    const supervisor = certData.supervisorName || 'Academy Director';
-    const supervisorTitle = certData.supervisorTitle || 'Supervisor';
+    // Left sig line
     doc
-      .moveTo(leftX, bottomY + 38)
-      .lineTo(leftX + sigLineLen, bottomY + 38)
-      .lineWidth(0.8)
-      .stroke('#555555');
+      .moveTo(leftSigX, botY + 30)
+      .lineTo(leftSigX + sigW, botY + 30)
+      .lineWidth(0.9)
+      .strokeColor('#333333')
+      .stroke();
+
+    // Left name
     doc
       .font('Helvetica-Bold')
-      .fontSize(12)
+      .fontSize(13)
       .fillColor('#0d1b4b')
-      .text(supervisor, leftX, bottomY + 44, { width: sigLineLen, align: 'center' });
-    doc
-      .font('Helvetica-Oblique')
-      .fontSize(10)
-      .fillColor('#666666')
-      .text(supervisorTitle, leftX, bottomY + 60, { width: sigLineLen, align: 'center' });
-
-    // QR code — center
-    const qrSize = 80;
-    const qrX = (W - qrSize) / 2;
-    const qrY = bottomY + 4;
-    doc
-      .rect(qrX - 4, qrY - 4, qrSize + 8, qrSize + 8)
-      .fill('#ffffff')
-      .stroke('#e2e8f0');
-    doc.image(qrBuffer, qrX, qrY, { width: qrSize, height: qrSize });
-    doc
-      .font('Helvetica')
-      .fontSize(7)
-      .fillColor('#888888')
-      .text(certData.verificationCode, qrX - 10, qrY + qrSize + 4, {
-        width: qrSize + 20,
+      .text(certData.supervisorName || 'Academy Director', leftSigX, botY + 36, {
+        width: sigW,
         align: 'center',
       });
 
-    // Right signatory
-    const rightX = W - 70 - sigLineLen;
-    const manager = certData.managerName || 'Program Manager';
-    const managerTitle = certData.managerTitle || 'Manager';
-    doc
-      .moveTo(rightX, bottomY + 38)
-      .lineTo(rightX + sigLineLen, bottomY + 38)
-      .lineWidth(0.8)
-      .stroke('#555555');
-    doc
-      .font('Helvetica-Bold')
-      .fontSize(12)
-      .fillColor('#0d1b4b')
-      .text(manager, rightX, bottomY + 44, { width: sigLineLen, align: 'center' });
+    // Left title
     doc
       .font('Helvetica-Oblique')
-      .fontSize(10)
-      .fillColor('#666666')
-      .text(managerTitle, rightX, bottomY + 60, { width: sigLineLen, align: 'center' });
+      .fontSize(11)
+      .fillColor('#555555')
+      .text(certData.supervisorTitle || 'Supervisor', leftSigX, botY + 54, {
+        width: sigW,
+        align: 'center',
+      });
 
-    // ── 12. Certificate number — very bottom center ───────────────────────────
+    // QR code — white box border then image
+    doc
+      .rect(qrX - 5, qrY - 5, qrSize + 10, qrSize + 10)
+      .fill('#ffffff');
+    doc.image(qrBuffer, qrX, qrY, { width: qrSize, height: qrSize });
+
+    // Right sig line
+    doc
+      .moveTo(rightSigX, botY + 30)
+      .lineTo(rightSigX + sigW, botY + 30)
+      .lineWidth(0.9)
+      .strokeColor('#333333')
+      .stroke();
+
+    // Right name
+    doc
+      .font('Helvetica-Bold')
+      .fontSize(13)
+      .fillColor('#0d1b4b')
+      .text(certData.managerName || 'Program Manager', rightSigX, botY + 36, {
+        width: sigW,
+        align: 'center',
+      });
+
+    // Right title
+    doc
+      .font('Helvetica-Oblique')
+      .fontSize(11)
+      .fillColor('#555555')
+      .text(certData.managerTitle || 'Manager', rightSigX, botY + 54, {
+        width: sigW,
+        align: 'center',
+      });
+
+    /* ── 11. Cert number micro text ── */
     doc
       .font('Helvetica')
-      .fontSize(8)
-      .fillColor('#aaaaaa')
-      .text(`Certificate No: ${certData.certificateNumber}`, 0, H - 38, {
+      .fontSize(7.5)
+      .fillColor('#9aa3be')
+      .text(`Certificate No: ${certData.certificateNumber}`, 0, H - 22, {
         align: 'center',
         width: W,
       });
@@ -302,3 +295,8 @@ export const generateCertificatePDF = async (certData: {
     doc.end();
   });
 };
+
+/** Returns "Their" always (gender-neutral fallback). */
+function _pronoun(_name: string): string {
+  return 'Their';
+}
