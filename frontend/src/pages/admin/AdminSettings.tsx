@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Save, Settings, Image as ImageIcon } from 'lucide-react';
+import { Save, Settings, Image as ImageIcon, Award } from 'lucide-react';
 import { communicationApi } from '../../api/communication.api';
 import { uploadsApi } from '../../api/uploads.api';
 import { Button } from '../../components/ui/Button';
@@ -24,6 +24,14 @@ export const AdminSettings: React.FC = () => {
   const [values, setValues] = useState<Record<string, string>>({});
   const [brandValues, setBrandValues] = useState<Record<string, string>>({});
   const [uploadingBrand, setUploadingBrand] = useState<string | null>(null);
+
+  // Certificate signatory settings (stored as org settings)
+  const CERT_KEYS = [
+    { key: 'certificate.supervisorName', label: 'Supervisor Name', placeholder: 'e.g. Reese Miller' },
+    { key: 'certificate.supervisorTitle', label: 'Supervisor Title', placeholder: 'e.g. Supervisor' },
+    { key: 'certificate.managerName', label: 'Manager Name', placeholder: 'e.g. Aaron Loeb' },
+    { key: 'certificate.managerTitle', label: 'Manager Title', placeholder: 'e.g. Manager' },
+  ];
 
   useEffect(() => {
     Promise.all([
@@ -107,6 +115,38 @@ export const AdminSettings: React.FC = () => {
               onSelect={f => handleBrandUpload(slot.key, f)}
               onRemove={brandValues[slot.key] ? () => handleBrandRemove(slot.key) : undefined}
             />
+          ))}
+        </div>
+      </div>
+
+      {/* Certificate Signatories */}
+      <div className="card">
+        <h3 className="font-semibold mb-1 pb-3 border-b border-gray-100 flex items-center gap-2">
+          <Award className="w-4 h-4 text-gray-400" /> Certificate Signatories
+        </h3>
+        <p className="text-xs text-gray-400 mt-2 mb-4">
+          These names appear at the bottom of every issued certificate — left signatory (Supervisor) and right signatory (Manager).
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {CERT_KEYS.map(({ key, label, placeholder }) => (
+            <div key={key} className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="label">{label}</label>
+                <Input
+                  value={values[key] || ''}
+                  onChange={e => setValues(p => ({ ...p, [key]: e.target.value }))}
+                  placeholder={placeholder}
+                />
+              </div>
+              <Button
+                size="sm"
+                loading={saving === key}
+                icon={<Save className="w-3.5 h-3.5" />}
+                onClick={() => handleSave(key, 'certificate', label)}
+              >
+                Save
+              </Button>
+            </div>
           ))}
         </div>
       </div>

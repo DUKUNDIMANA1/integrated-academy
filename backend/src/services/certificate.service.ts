@@ -44,10 +44,14 @@ export class CertificateService {
       },
     });
 
-    const [student, course, branding] = await Promise.all([
+    const [student, course, branding, supervisorSetting, managerSetting, supervisorTitleSetting, managerTitleSetting] = await Promise.all([
       prisma.student.findUnique({ where: { id: studentId }, include: { user: { select: { firstName: true, lastName: true } } } }),
       prisma.course.findUnique({ where: { id: courseId }, select: { title: true } }),
       prisma.organizationSettings.findUnique({ where: { key: 'branding.logo' }, select: { value: true } }),
+      prisma.organizationSettings.findUnique({ where: { key: 'certificate.supervisorName' }, select: { value: true } }),
+      prisma.organizationSettings.findUnique({ where: { key: 'certificate.managerName' }, select: { value: true } }),
+      prisma.organizationSettings.findUnique({ where: { key: 'certificate.supervisorTitle' }, select: { value: true } }),
+      prisma.organizationSettings.findUnique({ where: { key: 'certificate.managerTitle' }, select: { value: true } }),
     ]);
     if (!student || !course) return certificate;
 
@@ -64,6 +68,10 @@ export class CertificateService {
       logoPath,
       providerName: 'TrusterLabs Academy',
       programName: 'TrusterLabs Academy',
+      supervisorName: supervisorSetting?.value || 'Academy Director',
+      supervisorTitle: supervisorTitleSetting?.value || 'Supervisor',
+      managerName: managerSetting?.value || 'Program Manager',
+      managerTitle: managerTitleSetting?.value || 'Manager',
     });
     const directory = ensureUploadSubdir('certificates');
     const filename = `${certificate.certificateNumber}.pdf`;
